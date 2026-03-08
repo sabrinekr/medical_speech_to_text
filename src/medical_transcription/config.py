@@ -25,23 +25,40 @@ class Config:
     OUTPUT_DIR: Path = Path(os.getenv("OUTPUT_DIR", "./output"))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # Request Timeouts
+    OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+
+    # Input Validation
+    MIN_TRANSCRIPT_LENGTH: int = int(os.getenv("MIN_TRANSCRIPT_LENGTH", "10"))
+    MAX_TRANSCRIPT_LENGTH: int = int(os.getenv("MAX_TRANSCRIPT_LENGTH", "50000"))
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "100"))
+
+    # Whisper parameters (previously hardcoded)
+    WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+    WHISPER_VAD_MIN_SILENCE_MS: int = int(os.getenv("WHISPER_VAD_MIN_SILENCE_MS", "500"))
+
+    _validated: bool = False
+
     @classmethod
     def validate(cls) -> None:
         """Validate configuration."""
+        if cls._validated:
+            return
+
         if cls.LLM_PROVIDER not in ["ollama"]:
             raise ValueError(f"Unsupported LLM provider: {cls.LLM_PROVIDER}")
 
         if cls.WHISPER_DEVICE not in ["cpu", "cuda"]:
             raise ValueError(f"Unsupported Whisper device: {cls.WHISPER_DEVICE}")
 
-        # Ensure output directory exists
+        cls._validated = True
+
+    @classmethod
+    def ensure_output_dir(cls) -> None:
+        """Ensure output directory exists."""
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def get_prompt_path(cls) -> Path:
         """Get path to prompt template."""
         return Path(__file__).parent.parent.parent / "prompts" / "clinical_extraction.txt"
-
-
-# Validate configuration on import
-Config.validate()
