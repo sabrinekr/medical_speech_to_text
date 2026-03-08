@@ -60,6 +60,51 @@ class OllamaProvider(BaseLLMProvider):
 
         return sanitized
 
+    def _extract_json_from_response(self, response_text: str) -> dict:
+        """
+        Robustly extract JSON from LLM response.
+
+        Args:
+            response_text: Raw response text from LLM
+
+        Returns:
+            Parsed JSON dictionary
+
+        Raises:
+            ValueError: If no valid JSON can be extracted
+        """
+        # Strategy 1: Try direct parse
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Find outermost {} and parse
+        json_start = response_text.find("{")
+        json_end = response_text.rfind("}") + 1
+
+        if json_start >= 0 and json_end > json_start:
+            try:
+                return json.loads(response_text[json_start:json_end])
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: Try to find JSON code block (```json ... ```)
+        import re
+        json_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_block_match:
+            try:
+                return json.loads(json_block_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # All strategies failed
+        logger.error(f"Could not extract valid JSON. Response: {response_text[:200]}...")
+        raise ValueError(
+            "Could not extract valid JSON from LLM response. "
+            "The model may not be following the JSON format instruction."
+        )
+
     def extract_clinical_summary(self, transcript: str, prompt: str) -> ClinicalSummary:
         """
         Extract structured clinical summary from transcript using Ollama.
@@ -102,22 +147,16 @@ class OllamaProvider(BaseLLMProvider):
             response_text = response["message"]["content"]
             logger.debug(f"Ollama response: {response_text}")
 
-            # Parse JSON response
-            try:
-                clinical_data = json.loads(response_text)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON response: {e}")
-                logger.error(f"Response text: {response_text}")
-                # Try to extract JSON from response (in case there's extra text)
-                json_start = response_text.find("{")
-                json_end = response_text.rfind("}") + 1
-                if json_start >= 0 and json_end > json_start:
-                    clinical_data = json.loads(response_text[json_start:json_end])
-                else:
-                    raise ValueError("Could not extract valid JSON from response")
+            # Parse JSON response using robust extraction
+            clinical_data = self._extract_json_from_response(response_text)
 
             # Validate and create ClinicalSummary object
-            summary = ClinicalSummary(**clinical_data)
+            try:
+                summary = ClinicalSummary(**clinical_data)
+            except ValueError as e:
+                logger.error(f"Pydantic validation error: {e}")
+                logger.error(f"Clinical data: {clinical_data}")
+                raise ValueError(f"Invalid clinical data structure: {e}")
             logger.info("Clinical summary extracted successfully")
 
             return summary
