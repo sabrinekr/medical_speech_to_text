@@ -33,6 +33,33 @@ class OllamaProvider(BaseLLMProvider):
 
         logger.info(f"OllamaProvider initialized with model={self.model}, base_url={self.base_url}")
 
+    def _sanitize_transcript(self, transcript: str) -> str:
+        """
+        Sanitize transcript to prevent prompt injection attacks.
+
+        Args:
+            transcript: Raw transcript text
+
+        Returns:
+            Sanitized transcript safe for prompt formatting
+        """
+        # Remove control characters (keep only printable chars + newlines/tabs/carriage returns)
+        sanitized = ''.join(
+            c for c in transcript
+            if ord(c) >= 32 or c in '\n\t\r'
+        )
+
+        # Escape curly braces to prevent template injection
+        sanitized = sanitized.replace('{', '{{').replace('}', '}}')
+
+        # Log warning for suspicious patterns that might indicate injection attempts
+        suspicious_patterns = ['ignore previous', 'ignore all', 'new instructions', 'disregard']
+        for pattern in suspicious_patterns:
+            if pattern.lower() in sanitized.lower():
+                logger.warning(f"Suspicious pattern detected in transcript: '{pattern}'")
+
+        return sanitized
+
     def extract_clinical_summary(self, transcript: str, prompt: str) -> ClinicalSummary:
         """
         Extract structured clinical summary from transcript using Ollama.
@@ -47,13 +74,16 @@ class OllamaProvider(BaseLLMProvider):
         Raises:
             Exception: If extraction fails
         """
-        # Format prompt with transcript
-        full_prompt = prompt.format(transcript=transcript)
+        # Sanitize transcript to prevent prompt injection
+        sanitized_transcript = self._sanitize_transcript(transcript)
+
+        # Format prompt with sanitized transcript
+        full_prompt = prompt.format(transcript=sanitized_transcript)
 
         logger.info(f"Sending request to Ollama model: {self.model}")
 
         try:
-            # Call Ollama with JSON format
+            # Call Ollama with JSON format and timeout
             response = self.client.chat(
                 model=self.model,
                 messages=[
@@ -65,6 +95,7 @@ class OllamaProvider(BaseLLMProvider):
                 format="json",  # Request JSON output
                 options={
                     "temperature": 0.1,  # Low temperature for consistent output
+                    "timeout": Config.OLLAMA_TIMEOUT,  # Timeout in seconds
                 }
             )
 
@@ -97,6 +128,12 @@ class OllamaProvider(BaseLLMProvider):
                 f"Failed to connect to Ollama at {self.base_url}. "
                 f"Make sure Ollama is running and the model '{self.model}' is available. "
                 f"Error: {e}"
+            )
+        except TimeoutError as e:
+            logger.error(f"Ollama request timed out after {Config.OLLAMA_TIMEOUT}s")
+            raise Exception(
+                f"Ollama request timed out after {Config.OLLAMA_TIMEOUT} seconds. "
+                f"The model may be overloaded or the transcript may be too long."
             )
         except Exception as e:
             logger.error(f"Error extracting clinical summary: {e}")
