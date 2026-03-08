@@ -1,0 +1,17 @@
+.claude/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+venv/
+.uv/
+*.egg-info/
+dist/
+build/
+output/
+*.wav
+*.mp3
+models/
+.pytest_cache/
+.streamlit/

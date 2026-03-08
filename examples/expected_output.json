@@ -1,0 +1,16 @@
+{
+  "patient_complaint": "Starke Kopfschmerzen und Übelkeit seit drei Tagen",
+  "findings": [
+    "Temperatur 38,2 Grad Celsius",
+    "Lichtempfindlichkeit",
+    "Nackenstarre"
+  ],
+  "diagnosis": "Verdacht auf Migräne mit Aura",
+  "next_steps": [
+    "Nachkontrolle in einer Woche oder früher bei Verschlechterung"
+  ],
+  "medications": [
+    "Ibuprofen 600 Milligramm bei Bedarf, maximal dreimal täglich"
+  ],
+  "additional_notes": null
+}
