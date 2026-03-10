@@ -10,8 +10,6 @@ venv/
 dist/
 build/
 output/
-*.wav
-*.mp3
 models/
 .pytest_cache/
 .streamlit/
