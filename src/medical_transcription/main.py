@@ -11,9 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
 from rich.json import JSON
 
-from medical_transcription.core.audio_processor import AudioProcessor
-from medical_transcription.core.transcriber import Transcriber
-from medical_transcription.core.llm_extractor import LLMExtractor
+from medical_transcription.agent import MedicalAgent
 from medical_transcription import __version__
 
 console = Console()
@@ -32,7 +30,7 @@ def app(
     audio_file: Path = typer.Argument(
         ...,
         exists=True,
-        help="Path to audio file (WAV or MP3)"
+        help="Path to audio file (WAV, MP3, M4A, OGG, FLAC)"
     ),
     output: Optional[Path] = typer.Option(
         None,
@@ -53,7 +51,7 @@ def app(
         help="Show version information"
     ),
 ):
-    """Transcribe German medical dictation and extract structured summary."""
+    """Transcribe German medical dictation and extract structured summary using agentic AI with Ollama."""
 
     # Handle version flag
     if show_version:
@@ -63,57 +61,37 @@ def app(
     setup_logging(verbose)
 
     try:
-        # Step 1: Process audio
+        # Initialize agent
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task1 = progress.add_task("Processing audio file...", total=None)
+            task = progress.add_task(
+                f"🤖 Medical agent processing {audio_file.name}...",
+                total=None
+            )
 
-            processor = AudioProcessor()
-            wav_path, is_temp = processor.convert_to_wav(audio_file)
-            duration = processor.get_audio_duration(wav_path)
-
-            progress.update(task1, completed=True)
-
-            if verbose:
-                console.print(f"[green]✓[/green] Audio processed: {duration:.1f}s duration")
-
-            # Step 2: Transcribe
-            task2 = progress.add_task("Transcribing audio (this may take a few minutes)...", total=None)
-
-            transcriber = Transcriber()
-            transcript_result = transcriber.transcribe(wav_path, language="de")
-            transcript = transcript_result["transcript"]
-
-            progress.update(task2, completed=True)
+            # Create agent (always uses Ollama)
+            agent = MedicalAgent()
 
             if verbose:
-                console.print(f"[green]✓[/green] Transcription complete: {len(transcript)} characters")
-                console.print("\n[bold]Transcript:[/bold]")
-                console.print(Panel(transcript, border_style="blue"))
+                provider_info = agent.get_provider_info()
+                console.print(
+                    f"\n[cyan]Provider:[/cyan] {provider_info['provider']} "
+                    f"({provider_info['model']})"
+                )
 
-            # Step 3: Extract structured summary
-            task3 = progress.add_task("Extracting structured clinical summary...", total=None)
+            # Process audio end-to-end
+            summary = agent.process(str(audio_file))
 
-            extractor = LLMExtractor()
-            summary = extractor.extract(transcript)
-
-            progress.update(task3, completed=True)
-
-            if verbose:
-                console.print("[green]✓[/green] Clinical summary extracted")
-
-            # Clean up temporary file
-            if is_temp:
-                wav_path.unlink()
+            progress.update(task, completed=True)
 
         # Prepare output
         output_data = {
             "audio_file": str(audio_file),
-            "duration_seconds": duration,
-            "transcript": transcript,
+            "provider": agent.get_provider_info()["provider"],
+            "model": agent.get_provider_info()["model"],
             "clinical_summary": summary.model_dump()
         }
 

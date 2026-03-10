@@ -11,8 +11,10 @@ load_dotenv()
 class Config:
     """Application configuration from environment variables."""
 
-    # LLM Configuration
+    # LLM Provider Configuration (Ollama only)
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")
+
+    # Ollama Configuration
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
@@ -37,6 +39,11 @@ class Config:
     WHISPER_BEAM_SIZE: int = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
     WHISPER_VAD_MIN_SILENCE_MS: int = int(os.getenv("WHISPER_VAD_MIN_SILENCE_MS", "500"))
 
+    # Agent Configuration
+    MAX_EXTRACTION_ITERATIONS: int = int(os.getenv("MAX_EXTRACTION_ITERATIONS", "2"))
+    MAX_TRANSCRIPTION_ATTEMPTS: int = int(os.getenv("MAX_TRANSCRIPTION_ATTEMPTS", "1"))
+    QUALITY_THRESHOLD: float = float(os.getenv("QUALITY_THRESHOLD", "0.8"))
+
     _validated: bool = False
 
     @classmethod
@@ -45,9 +52,11 @@ class Config:
         if cls._validated:
             return
 
-        if cls.LLM_PROVIDER not in ["ollama"]:
-            raise ValueError(f"Unsupported LLM provider: {cls.LLM_PROVIDER}")
+        # Validate LLM provider (only Ollama supported)
+        if cls.LLM_PROVIDER != "ollama":
+            raise ValueError(f"Unsupported LLM provider: {cls.LLM_PROVIDER}. Only 'ollama' is supported.")
 
+        # Validate Whisper device
         if cls.WHISPER_DEVICE not in ["cpu", "cuda"]:
             raise ValueError(f"Unsupported Whisper device: {cls.WHISPER_DEVICE}")
 

@@ -6,9 +6,8 @@ import tempfile
 from pathlib import Path
 import logging
 
-from medical_transcription.core.audio_processor import AudioProcessor
-from medical_transcription.core.transcriber import Transcriber
-from medical_transcription.core.llm_extractor import LLMExtractor
+from medical_transcription.agent import MedicalAgent
+from medical_transcription.config import Config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,8 +20,6 @@ st.set_page_config(
 )
 
 # Initialize session state
-if "transcript" not in st.session_state:
-    st.session_state.transcript = None
 if "summary" not in st.session_state:
     st.session_state.summary = None
 if "processing" not in st.session_state:
@@ -30,64 +27,58 @@ if "processing" not in st.session_state:
 
 
 def process_audio(audio_file):
-    """Process audio file and extract clinical summary."""
+    """Process audio file and extract clinical summary using Medical Agent."""
     try:
         # Save uploaded file to temporary location
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(audio_file.name).suffix) as tmp_file:
             tmp_file.write(audio_file.getbuffer())
             tmp_path = Path(tmp_file.name)
 
-        # Step 1: Process audio
-        st.info("🔄 Processing audio file...")
-        processor = AudioProcessor()
-        wav_path, is_temp = processor.convert_to_wav(tmp_path)
-        duration = processor.get_audio_duration(wav_path)
+        # Process with Medical Agent
+        st.info("🤖 Medical agent processing audio with Ollama...")
 
-        st.success(f"✓ Audio processed: {duration:.1f}s duration")
+        # Initialize agent (always uses Ollama)
+        agent = MedicalAgent()
 
-        # Step 2: Transcribe
-        st.info("🎤 Transcribing audio (this may take a few minutes)...")
-        transcriber = Transcriber()
-        transcript_result = transcriber.transcribe(wav_path, language="de")
-        transcript = transcript_result["transcript"]
+        # Process end-to-end
+        summary = agent.process(str(tmp_path))
 
-        st.success(f"✓ Transcription complete: {len(transcript)} characters")
+        st.success("✅ Processing complete!")
 
-        # Step 3: Extract structured summary
-        st.info("🤖 Extracting structured clinical summary...")
-        extractor = LLMExtractor()
-        summary = extractor.extract(transcript)
-
-        st.success("✓ Clinical summary extracted!")
-
-        # Clean up temporary files
+        # Clean up temporary file
         tmp_path.unlink()
-        if is_temp:
-            wav_path.unlink()
 
-        return transcript, summary, duration
+        return summary
 
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
         logging.exception("Error processing audio")
-        return None, None, None
+        return None
 
 
 # Header
 st.title("🏥 Medical Speech-to-Text System")
 st.markdown("""
-Transform German medical dictations into structured clinical summaries using AI.
+Transform German medical dictations into structured clinical summaries using **Agentic AI with Ollama**.
 
 **Features:**
-- Speech-to-text transcription with Whisper
-- Structured extraction with local LLM (Ollama)
-- Export results as JSON
+- 🎤 Speech-to-text transcription with Whisper
+- 🤖 Multi-step agentic extraction with LangGraph
+- ✅ Automatic quality checks and self-correction
+- 💻 Free local processing with Ollama
+- 📥 Export results as JSON
 """)
 
 st.divider()
 
 # Sidebar
 with st.sidebar:
+    st.header("⚙️ Settings")
+
+    st.info("💻 **Ollama** (Local)\n- Free\n- Requires Ollama running\n- Model: " + Config.OLLAMA_MODEL)
+
+    st.divider()
+
     st.header("ℹ️ Information")
     st.markdown("""
     **Supported Audio Formats:**
@@ -97,22 +88,18 @@ with st.sidebar:
     - OGG
     - FLAC
 
-    **Requirements:**
-    - Ollama must be running
-    - Model llama3.1:8b must be available
+    **How it works:**
+    1. Audio → WAV conversion
+    2. Whisper transcription
+    3. Quality assessment
+    4. Multi-step AI extraction
+    5. Quality validation & refinement
+    6. Final clinical summary
 
-    **Privacy:**
-    All processing is done locally. No data is sent to external servers.
-    """)
-
-    st.divider()
-
-    st.header("⚙️ Settings")
-    st.markdown("""
-    Current configuration:
-    - **Whisper Model:** small
-    - **LLM Provider:** Ollama
-    - **Language:** German
+    **Agentic Features:**
+    - Automatic quality checks
+    - Self-correction via refinement
+    - Adaptive processing
     """)
 
 # Main content
@@ -132,36 +119,25 @@ with col1:
         st.audio(uploaded_file, format=f"audio/{Path(uploaded_file.name).suffix[1:]}")
 
         # Process button
-        if st.button("🚀 Transcribe & Extract", type="primary", use_container_width=True):
+        if st.button("🚀 Process Audio", type="primary", use_container_width=True):
             st.session_state.processing = True
-            transcript, summary, duration = process_audio(uploaded_file)
+            summary = process_audio(uploaded_file)
 
-            if transcript and summary:
-                st.session_state.transcript = transcript
+            if summary:
                 st.session_state.summary = summary
-                st.session_state.duration = duration
             st.session_state.processing = False
 
 with col2:
     st.header("📊 Results")
 
-    if st.session_state.transcript:
-        # Transcript
-        with st.expander("📝 Transcript", expanded=False):
-            st.text_area(
-                "Transcribed text",
-                value=st.session_state.transcript,
-                height=200,
-                label_visibility="collapsed"
-            )
-
+    if st.session_state.summary:
         # Clinical Summary
         st.subheader("🏥 Clinical Summary")
 
         summary = st.session_state.summary
 
         # Display structured summary
-        st.markdown(f"**Patient Complaint:**")
+        st.markdown("**Patient Complaint:**")
         st.info(summary.patient_complaint)
 
         if summary.findings:
@@ -170,7 +146,7 @@ with col2:
                 st.write(f"- {finding}")
 
         if summary.diagnosis:
-            st.markdown(f"**Diagnosis:**")
+            st.markdown("**Diagnosis:**")
             st.warning(summary.diagnosis)
 
         if summary.next_steps:
@@ -184,7 +160,7 @@ with col2:
                 st.write(f"- {med}")
 
         if summary.additional_notes:
-            st.markdown(f"**Additional Notes:**")
+            st.markdown("**Additional Notes:**")
             st.write(summary.additional_notes)
 
         st.divider()
@@ -193,8 +169,8 @@ with col2:
         st.subheader("💾 Export")
 
         output_data = {
-            "duration_seconds": st.session_state.duration,
-            "transcript": st.session_state.transcript,
+            "provider": "ollama",
+            "model": Config.OLLAMA_MODEL,
             "clinical_summary": summary.model_dump()
         }
 
@@ -212,17 +188,16 @@ with col2:
 
         with col_b:
             if st.button("🗑️ Clear Results", use_container_width=True):
-                st.session_state.transcript = None
                 st.session_state.summary = None
                 st.rerun()
 
     elif not st.session_state.processing:
-        st.info("👈 Upload an audio file and click 'Transcribe & Extract' to begin.")
+        st.info("👈 Upload an audio file and click 'Process Audio' to begin.")
 
 # Footer
 st.divider()
 st.markdown("""
 <div style='text-align: center; color: gray;'>
-    <small>Medical Speech-to-Text v0.1.0 | Built with Whisper & Ollama</small>
+    <small>Medical Speech-to-Text v1.0.0 | Agentic AI with LangGraph | Whisper + Ollama</small>
 </div>
 """, unsafe_allow_html=True)
