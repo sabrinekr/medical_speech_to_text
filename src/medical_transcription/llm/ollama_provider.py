@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict
 import ollama
 
 from medical_transcription.llm.base import BaseLLMProvider
@@ -104,6 +104,78 @@ class OllamaProvider(BaseLLMProvider):
             "Could not extract valid JSON from LLM response. "
             "The model may not be following the JSON format instruction."
         )
+
+    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """
+        Generate text using Ollama.
+
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt (not used by Ollama in simple mode)
+
+        Returns:
+            Generated text response
+        """
+        logger.info(f"Sending request to Ollama model: {self.model}")
+
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0.1, "timeout": Config.OLLAMA_TIMEOUT},
+            )
+
+            return response["message"]["content"]
+
+        except Exception as e:
+            logger.error(f"Ollama API error: {e}")
+            raise Exception(
+                f"Failed to connect to Ollama at {self.base_url}. "
+                f"Make sure Ollama is running and the model '{self.model}' is available. "
+                f"Error: {e}"
+            )
+
+    def generate_json(
+        self, prompt: str, system_prompt: Optional[str] = None, schema: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Generate structured JSON using Ollama.
+
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            schema: Optional JSON schema (not used but kept for interface compatibility)
+
+        Returns:
+            Parsed JSON dictionary
+        """
+        # Add JSON formatting instruction to prompt
+        json_instruction = "\n\nAntworten Sie NUR mit gültigem JSON. Kein zusätzlicher Text."
+        full_prompt = prompt + json_instruction
+
+        logger.info(f"Sending JSON request to Ollama model: {self.model}")
+
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[{"role": "user", "content": full_prompt}],
+                format="json",  # Request JSON output
+                options={"temperature": 0.1, "timeout": Config.OLLAMA_TIMEOUT},
+            )
+
+            response_text = response["message"]["content"]
+            logger.debug(f"Ollama response: {response_text}")
+
+            # Parse JSON response using robust extraction
+            return self._extract_json_from_response(response_text)
+
+        except Exception as e:
+            logger.error(f"Ollama API error: {e}")
+            raise Exception(
+                f"Failed to connect to Ollama at {self.base_url}. "
+                f"Make sure Ollama is running and the model '{self.model}' is available. "
+                f"Error: {e}"
+            )
 
     def extract_clinical_summary(self, transcript: str, prompt: str) -> ClinicalSummary:
         """
