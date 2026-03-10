@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-medical-transcribe = "medical_transcription.main:app"
+medical-transcribe = "medical_transcription.main:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -11,16 +11,13 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy dependency files and source code (needed for building)
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Install dependencies
-RUN uv sync --frozen --no-dev || uv sync --no-dev
-
-# Copy application code
-COPY src/ ./src/
-COPY prompts/ ./prompts/
-COPY examples/ ./examples/
+RUN uv sync --frozen --no-dev
 
 # Pre-download Whisper model (reduces first-run time)
 RUN uv run python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" || echo "Whisper model will be downloaded on first run"

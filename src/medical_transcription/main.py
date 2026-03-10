@@ -26,7 +26,7 @@ def setup_logging(verbose: bool = False):
     )
 
 
-def app(
+def cli_app(
     audio_file: Path = typer.Argument(
         ...,
         exists=True,
@@ -128,5 +128,10 @@ def app(
         return 1
 
 
+def main():
+    """Entry point for the CLI application."""
+    return typer.run(cli_app)
+
+
 if __name__ == "__main__":
-    sys.exit(typer.run(app))
+    sys.exit(main())

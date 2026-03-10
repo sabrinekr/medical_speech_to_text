@@ -75,7 +75,7 @@ ollama pull llama3.1:8b
 
 ```bash
 # Clone or navigate to project directory
-cd /home/sabrinekr/kim/medical_speech_to_text
+cd /medical_speech_to_text
 
 # Install dependencies with uv
 uv sync
@@ -157,32 +157,75 @@ docker build -t medical-transcription .
 
 #### Run CLI in Docker
 
-```bash
-# Process a file from examples directory
-docker run -v $(pwd)/examples:/data medical-transcription /data/sample_medical_de.mp3
+**Important:** Docker containers need to connect to Ollama running on your host machine. Choose one of the following methods:
 
-# Process with output
-docker run -v $(pwd):/workspace medical-transcription \
-  /workspace/audio.wav --output /workspace/result.json
+**Method 1: Using Host Network (Recommended for Linux)**
+
+```bash
+# Process a test audio file
+docker run --network=host \
+  -v $(pwd)/test_audio:/data \
+  medical-transcription /data/01_bronchitis.mp3
+
+# Process with output file
+docker run --network=host \
+  -v $(pwd)/test_audio:/data \
+  -v $(pwd)/output:/output \
+  medical-transcription /data/01_bronchitis.mp3 --output /output/result.json
+```
+
+**Method 2: Using host.docker.internal (Works on all platforms)**
+
+```bash
+# On Linux, add host gateway
+docker run --add-host=host.docker.internal:host-gateway \
+  -v $(pwd)/test_audio:/data \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  medical-transcription /data/01_bronchitis.mp3
+
+# On macOS/Windows, host.docker.internal works by default
+docker run \
+  -v $(pwd)/test_audio:/data \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  medical-transcription /data/01_bronchitis.mp3
+```
+
+**Method 3: Using Host IP (Alternative)**
+
+```bash
+# Replace 192.168.1.100 with your actual host IP
+docker run \
+  -v $(pwd)/test_audio:/data \
+  -e OLLAMA_BASE_URL=http://192.168.1.100:11434 \
+  medical-transcription /data/01_bronchitis.mp3
 ```
 
 #### Run Streamlit in Docker
 
 ```bash
-docker run -p 8501:8501 \
+# Using host network (simplest for Linux)
+docker run --network=host \
+  --entrypoint uv \
+  medical-transcription \
+  run streamlit run src/medical_transcription/app.py
+
+# Using port mapping with host.docker.internal
+docker run --add-host=host.docker.internal:host-gateway \
+  -p 8501:8501 \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
   --entrypoint uv \
   medical-transcription \
   run streamlit run src/medical_transcription/app.py
 ```
 
-**Note:** For the LLM to work in Docker, you'll need to connect to Ollama running on your host:
+Then open your browser to `http://localhost:8501`
 
-```bash
-# On Linux, use host.docker.internal or your host IP
-docker run -p 8501:8501 \
-  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-  medical-transcription ...
-```
+**Docker Networking Notes:**
+- Ollama must be running on your host machine (`ollama serve`)
+- The model must be downloaded (`ollama pull llama3.1:8b`)
+- `--network=host` is the simplest option on Linux but bypasses Docker's network isolation
+- `--add-host=host.docker.internal:host-gateway` enables `host.docker.internal` on Linux
+- On macOS/Windows, `host.docker.internal` works by default without extra flags
 
 ## Configuration
 
