@@ -66,8 +66,3 @@ class Config:
     def ensure_output_dir(cls) -> None:
         """Ensure output directory exists."""
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    @classmethod
-    def get_prompt_path(cls) -> Path:
-        """Get path to prompt template."""
-        return Path(__file__).parent.parent.parent / "prompts" / "clinical_extraction.txt"
