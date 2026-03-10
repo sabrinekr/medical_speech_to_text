@@ -4,31 +4,42 @@ Transform German medical dictations into structured clinical summaries using AI.
 
 ## Overview
 
-This application processes German medical audio dictations through a two-stage pipeline:
+This application processes German medical audio dictations using an **agentic AI architecture** with LangGraph:
 
-1. **Speech-to-Text**: Transcribe audio files (WAV/MP3) using Whisper
-2. **Structured Extraction**: Extract clinical summaries as JSON using a local LLM (Ollama)
+1. **Speech-to-Text**: Transcribe audio files (WAV/MP3/M4A/OGG/FLAC) using Whisper
+2. **Agentic Extraction**: Multi-step LLM reasoning with quality checks and self-correction
+3. **Structured Output**: Clinical summaries as validated JSON
 
 **Key Features:**
+- 🤖 **Autonomous agent** with multi-step reasoning and self-correction
 - 🎤 High-quality German speech recognition with Whisper
 - 🏥 Structured clinical data extraction (patient complaint, findings, diagnosis, next steps, medications)
+- 🔄 Quality validation with automatic refinement
 - 🖥️ Both CLI and web interface (Streamlit)
 - 🐳 Docker support for easy deployment
 - 🔒 Privacy-focused with local processing (no external APIs required)
+- 🆓 **Free to use** - runs entirely on your local machine with Ollama
 
 ## Architecture
 
+**Agentic LangGraph Workflow:**
+
 ```
-Audio File (WAV/MP3)
-    ↓
-[Audio Processor] → Convert to 16kHz mono WAV
-    ↓
-[Whisper Transcriber] → German speech-to-text
-    ↓
-[LLM Extractor] → Structured JSON extraction (via Ollama)
-    ↓
-Clinical Summary (JSON)
+Audio File → Medical Agent → Clinical Summary
+                  ↓
+        [LangGraph - 9 Node Pipeline]
+          ├─ Tool: process_audio (convert to WAV)
+          ├─ Tool: transcribe_audio (Whisper)
+          ├─ Quality Assessment
+          ├─ Entity Extraction (LLM)
+          ├─ Findings Structuring (LLM)
+          ├─ Diagnosis Synthesis (LLM)
+          ├─ Treatment Planning (LLM)
+          ├─ Quality Check (LLM)
+          └─ Synthesis
 ```
+
+**Key Innovation:** The agent autonomously controls the entire pipeline, with built-in quality checks and self-correction loops. If the extracted summary is incomplete, the agent automatically refines it (up to 2 iterations).
 
 ## Prerequisites
 
@@ -75,8 +86,8 @@ cp .env.example .env
 # (Optional) Download Whisper model in advance
 uv run python scripts/download_models.py
 
-# (Optional) Generate sample audio for testing
-uv run python scripts/create_sample_audio.py
+# Generate test audio files (8 German medical scenarios)
+uv run python generate_test_audio.py
 ```
 
 ## Usage
@@ -96,15 +107,29 @@ uv run medical-transcribe audio.wav --output result.json
 uv run medical-transcribe audio.wav --verbose
 ```
 
-Example with sample audio:
+Example with test audio:
 
 ```bash
-# Generate sample audio first
-uv run python scripts/create_sample_audio.py
+# Generate test audio files (8 German medical scenarios)
+uv run python generate_test_audio.py
 
-# Process it
-uv run medical-transcribe examples/sample_medical_de.mp3 -o output.json -v
+# Process a test file
+uv run medical-transcribe test_audio/01_bronchitis.mp3 -o output.json -v
+
+# Try other scenarios
+uv run medical-transcribe test_audio/02_hypertonie.mp3 -v
+uv run medical-transcribe test_audio/05_asthma.mp3 -v
 ```
+
+**Available test scenarios:**
+1. `01_bronchitis.mp3` - Acute bronchitis with antibiotics
+2. `02_hypertonie.mp3` - Hypertension control visit
+3. `03_gastritis.mp3` - NSAID-induced gastritis
+4. `04_diabetes_kontrolle.mp3` - Diabetes quarterly check
+5. `05_asthma.mp3` - Allergic asthma exacerbation
+6. `06_rueckenschmerzen.mp3` - Acute lower back pain
+7. `07_harnwegsinfekt.mp3` - Urinary tract infection
+8. `08_angina.mp3` - Streptococcal tonsillitis
 
 ### Streamlit Web Interface
 
@@ -164,8 +189,8 @@ docker run -p 8501:8501 \
 Configuration is managed through environment variables. Create a `.env` file or set them directly:
 
 ```bash
-# LLM Configuration
-LLM_PROVIDER=ollama                    # LLM provider (only ollama supported currently)
+# LLM Configuration (Ollama only)
+LLM_PROVIDER=ollama                    # LLM provider (only ollama supported)
 OLLAMA_BASE_URL=http://localhost:11434 # Ollama API URL
 OLLAMA_MODEL=llama3.1:8b               # Ollama model name
 
@@ -173,6 +198,11 @@ OLLAMA_MODEL=llama3.1:8b               # Ollama model name
 WHISPER_MODEL=small                    # Model size: tiny, base, small, medium, large
 WHISPER_DEVICE=cpu                     # Device: cpu or cuda
 WHISPER_COMPUTE_TYPE=int8              # Compute type: int8, float16, float32
+
+# Agent Configuration
+MAX_EXTRACTION_ITERATIONS=2            # Max refinement iterations
+MAX_TRANSCRIPTION_ATTEMPTS=1           # Max retranscription attempts
+QUALITY_THRESHOLD=0.8                  # Quality validation threshold
 
 # Output
 OUTPUT_DIR=./output                    # Default output directory
@@ -230,8 +260,13 @@ The application outputs JSON with the following structure:
 |------|------------------------|
 | Audio preprocessing | <1s |
 | Whisper transcription (small) | 60-90s |
-| LLM extraction (llama3.1:8b) | 5-10s |
-| **Total** | **~70-100s** |
+| Agent extraction (5-7 LLM calls) | 50-150s |
+| **Total** | **~2-4 minutes** |
+
+**Note:** The agentic architecture uses multiple LLM calls for better quality:
+- Without refinement: ~50-80s LLM time (5 calls)
+- With 1 refinement iteration: +30-50% time
+- Trade-off: Slower but more accurate and complete extractions
 
 **Tips for better performance:**
 - Use GPU for Whisper: Set `WHISPER_DEVICE=cuda` (requires NVIDIA GPU + CUDA)
@@ -294,23 +329,29 @@ uv run python scripts/download_models.py
 │       ├── main.py                   # CLI entry point
 │       ├── app.py                    # Streamlit web interface
 │       ├── config.py                 # Configuration management
+│       ├── agent/                    # Agentic LangGraph implementation
+│       │   ├── __init__.py
+│       │   ├── medical_agent.py     # Main agent entry point
+│       │   ├── state.py             # Agent state schema
+│       │   ├── nodes.py             # 9 node implementations
+│       │   ├── graph.py             # LangGraph definition
+│       │   ├── tools.py             # Tool wrappers
+│       │   └── prompts.py           # German prompts for each node
 │       ├── core/
 │       │   ├── audio_processor.py   # Audio format conversion
-│       │   ├── transcriber.py       # Whisper speech-to-text
-│       │   └── llm_extractor.py     # LLM-based extraction
+│       │   └── transcriber.py       # Whisper speech-to-text
 │       ├── models/
 │       │   └── clinical_summary.py  # Pydantic data models
 │       └── llm/
 │           ├── base.py              # Abstract LLM provider
-│           └── ollama_provider.py   # Ollama implementation
-├── prompts/
-│   └── clinical_extraction.txt      # German prompt template
-├── examples/
-│   ├── sample_medical_de.mp3        # Sample audio
-│   └── expected_output.json         # Expected output
-├── scripts/
-│   ├── download_models.py           # Pre-download Whisper model
-│   └── create_sample_audio.py       # Generate test audio
+│           ├── ollama_provider.py   # Ollama implementation
+│           └── provider_factory.py  # Provider creation
+├── test_audio/                      # Generated test audio files
+│   ├── 01_bronchitis.mp3
+│   ├── 02_hypertonie.mp3
+│   ├── ... (8 scenarios total)
+│   └── 08_angina.mp3
+├── generate_test_audio.py           # Generate test audio
 ├── pyproject.toml                   # UV dependencies
 ├── Dockerfile                       # Container configuration
 └── README.md                        # This file
@@ -318,13 +359,50 @@ uv run python scripts/download_models.py
 
 ### Running Tests
 
+The project includes comprehensive unit tests for core components.
+
 ```bash
-# Install dev dependencies
+# Install dev dependencies (includes pytest, pytest-cov, pytest-mock)
 uv sync --dev
 
-# Run tests (when implemented)
+# Run all tests
 uv run pytest
+
+# Run with verbose output
+uv run pytest -v
+
+# Run specific test file
+uv run pytest tests/unit/test_ollama_provider.py
+
+# Run with coverage report
+uv run pytest --cov=src/medical_transcription --cov-report=term-missing
+
+# Run tests matching a pattern
+uv run pytest -k "test_sanitize"
+
+# Run only unit tests (using markers)
+uv run pytest -m unit
 ```
+
+**Test Structure:**
+```
+tests/
+├── conftest.py                      # Shared fixtures
+└── unit/
+    ├── test_audio_processor.py      # Audio processing tests (6 tests)
+    ├── test_clinical_summary.py     # Pydantic model tests (6 tests)
+    ├── test_config.py              # Configuration tests (7 tests)
+    ├── test_ollama_provider.py     # LLM provider tests (13 tests)
+    └── test_provider_factory.py    # Factory pattern tests (4 tests)
+```
+
+**Current Test Coverage:**
+- ✅ 36 unit tests covering critical components
+- ✅ Config validation and environment handling
+- ✅ Pydantic models and data structures
+- ✅ LLM provider (Ollama) with JSON extraction
+- ✅ Audio processing and validation
+- ✅ Provider factory pattern
 
 ## Privacy & Security
 
@@ -336,15 +414,36 @@ uv run pytest
   - Ensure proper access controls on output directory
   - Consider encrypting stored results
 
+## Technical Details
+
+### Agentic Architecture
+
+The application uses **LangGraph** to implement an autonomous agent with:
+
+- **9 specialized nodes**: Each handles a specific task (audio processing, transcription, entity extraction, etc.)
+- **Quality-driven iteration**: Automatic refinement if extracted summary is incomplete
+- **Conditional routing**: Agent decides next steps based on quality assessment
+- **Tool integration**: Agent calls audio processing and transcription as tools
+- **State management**: Full execution state tracked through pipeline
+
+### Why Agentic?
+
+Traditional single-shot LLM extraction often misses details or produces incomplete summaries. The agentic approach:
+
+✅ **Better completeness** - Multiple specialized extraction steps catch more details
+✅ **Self-correction** - Quality checks trigger automatic refinement
+✅ **Transparency** - Execution path shows decision-making
+✅ **Adaptability** - Can re-transcribe if needed
+
 ## Future Enhancements
 
 - [ ] Batch processing mode for multiple files
 - [ ] GPU acceleration support for faster inference
 - [ ] Fine-tuned Whisper model for German medical terminology
-- [ ] Additional LLM providers (Anthropic Claude API, OpenAI API)
 - [ ] Web API mode (FastAPI) for integration
 - [ ] Real-time streaming transcription
 - [ ] Multi-language support
+- [ ] Export to EHR formats (HL7 FHIR, etc.)
 
 ## License
 
@@ -357,8 +456,10 @@ For issues, questions, or contributions, please open an issue in the project rep
 ---
 
 **Built with:**
+- [LangGraph](https://github.com/langchain-ai/langgraph) for agentic workflow orchestration
 - [Whisper](https://github.com/openai/whisper) by OpenAI
 - [faster-whisper](https://github.com/guillaumekln/faster-whisper) by Guillaume Klein
-- [Ollama](https://ollama.com) for local LLM inference
+- [Ollama](https://ollama.com) for local LLM inference (free)
 - [Streamlit](https://streamlit.io) for web interface
 - [uv](https://github.com/astral-sh/uv) for Python dependency management
+- [gTTS](https://github.com/pndurette/gTTS) for test audio generation
