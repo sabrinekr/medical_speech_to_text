@@ -59,7 +59,7 @@ class MedicalAgent:
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
-            ValueError: If audio format not supported
+            ValueError: If audio file too large (>100 MB) or transcript length invalid
             Exception: If processing fails
         """
         audio_path = Path(audio_file_path)
@@ -67,7 +67,17 @@ class MedicalAgent:
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        # Validate file size
+        file_size_mb = audio_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > Config.MAX_UPLOAD_SIZE_MB:
+            raise ValueError(
+                f"Audio file too large: {file_size_mb:.2f} MB. "
+                f"Maximum allowed size is {Config.MAX_UPLOAD_SIZE_MB} MB. "
+                f"Consider splitting the audio into smaller segments."
+            )
+
         logger.info(f"Starting medical transcription for: {audio_path.name}")
+        logger.info(f"File size: {file_size_mb:.2f} MB")
         logger.info(f"Provider: {self.provider_name}")
 
         # Initialize state

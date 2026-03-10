@@ -79,6 +79,21 @@ class AgentNodes:
             state["transcript"] = result["transcript"]
             state["transcript_segments"] = result["segments"]
 
+            # Validate transcript length
+            transcript_length = len(result["transcript"])
+            if transcript_length < Config.MIN_TRANSCRIPT_LENGTH:
+                raise ValueError(
+                    f"Transcript too short: {transcript_length} characters. "
+                    f"Minimum required: {Config.MIN_TRANSCRIPT_LENGTH} characters. "
+                    f"Audio may be empty or silent."
+                )
+            if transcript_length > Config.MAX_TRANSCRIPT_LENGTH:
+                raise ValueError(
+                    f"Transcript too long: {transcript_length} characters. "
+                    f"Maximum allowed: {Config.MAX_TRANSCRIPT_LENGTH} characters. "
+                    f"Consider splitting the audio into smaller segments."
+                )
+
             # Calculate average confidence from segments
             if result["segments"]:
                 avg_confidence = sum(
@@ -92,7 +107,7 @@ class AgentNodes:
             state["execution_path"].append("transcribe_audio")
 
             logger.info(
-                f"Transcription complete: {len(result['transcript'])} chars, "
+                f"Transcription complete: {transcript_length} chars, "
                 f"confidence={state['transcript_confidence']:.2f}"
             )
 
