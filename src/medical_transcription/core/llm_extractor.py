@@ -57,12 +57,28 @@ class LLMExtractor:
             Structured ClinicalSummary object
 
         Raises:
+            ValueError: If transcript is invalid
             Exception: If extraction fails
         """
+        # Validate transcript is not empty
         if not transcript or not transcript.strip():
             raise ValueError("Transcript cannot be empty")
 
-        logger.info("Extracting clinical summary from transcript")
+        # Validate transcript length
+        transcript_length = len(transcript.strip())
+        if transcript_length < Config.MIN_TRANSCRIPT_LENGTH:
+            raise ValueError(
+                f"Transcript too short ({transcript_length} characters). "
+                f"Minimum length: {Config.MIN_TRANSCRIPT_LENGTH} characters"
+            )
+
+        if transcript_length > Config.MAX_TRANSCRIPT_LENGTH:
+            raise ValueError(
+                f"Transcript too long ({transcript_length} characters). "
+                f"Maximum length: {Config.MAX_TRANSCRIPT_LENGTH} characters"
+            )
+
+        logger.info(f"Extracting clinical summary from transcript ({transcript_length} characters)")
 
         try:
             summary = self.provider.extract_clinical_summary(
